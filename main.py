@@ -1,14 +1,14 @@
-import requests
 import discord
 import os
+import requests
 from dotenv import load_dotenv
 
+# Load .env
 load_dotenv()
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
-TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-print("OPENROUTER_API_KEY =", OPENROUTER_API_KEY)
+TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
 
 intents = discord.Intents.default()
 intents.message_content = True
@@ -20,12 +20,15 @@ last_messages = {}
 async def get_response(user_id, user_message, username):
     history = chat_histories.get(user_id, [])
 
+    # Deteksi pesan yang diulang
     if last_messages.get(user_id) == user_message.lower():
         history.append({"role": "user", "content": "Aku ulangin pesan yang sama terus, coba kasih respon unik."})
     else:
         history.append({"role": "user", "content": user_message})
 
-    system_prompt = f"Kamu adalah bot Discord yang santai, lucu, dan gaul. Nama user: {username}"
+    system_prompt = f"""
+Kamu adalah bot Discord dengan gaya santai, gaul, dan lucu. Kamu suka jawab dengan cara yang asik dan kayak ngobrol sama temen. Nama user: {username}
+"""
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -33,12 +36,9 @@ async def get_response(user_id, user_message, username):
     }
 
     body = {
-        "model": "openchat/openchat-3.5",  # gratis, powerful
-        "messages": [
-            {"role": "system", "content": system_prompt},
-            *history
-        ],
-        "temperature": 0.8,
+        "model": "openchat/openchat-3.5",  # gratis dan bagus
+        "messages": [{"role": "system", "content": system_prompt}] + history,
+        "temperature": 0.85,
         "max_tokens": 300
     }
 
@@ -53,14 +53,14 @@ async def get_response(user_id, user_message, username):
             last_messages[user_id] = user_message.lower()
             return reply
         else:
-            return f"⚠️ Error: {data.get('error', {}).get('message', 'Gagal menerima respon')}"
+            return f"⚠️ Error dari API: {data.get('error', {}).get('message', 'Gagal menerima respon')}"
 
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
 @client.event
 async def on_ready():
-    print(f"✅ Bot {client.user} siap pakai OpenRouter!")
+    print(f"✅ Bot {client.user} sudah online dan siap ngobrol!")
 
 @client.event
 async def on_message(message):
