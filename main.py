@@ -15,29 +15,44 @@ intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
+# Simpan riwayat percakapan dan pesan terakhir user
 chat_histories = {}
+last_messages = {}
 
-async def get_gpt_response(user_id, user_message):
+async def get_gpt_response(user_id, user_message, username):
     history = chat_histories.get(user_id, [])
-    history.append({"role": "user", "content": user_message})
+
+    # Deteksi kalau user kirim pesan yang sama berulang
+    if last_messages.get(user_id) == user_message.lower():
+        history.append({"role": "user", "content": "Aku ulangin pesan yang sama terus, coba kasih respon unik."})
+    else:
+        history.append({"role": "user", "content": user_message})
+
+    # Tambah karakter santai/gaul
+    system_prompt = f"""
+Kamu adalah chatbot Discord yang punya kepribadian santai, gaul, dan suka becanda.
+Jawaban kamu ramah, akrab, dan pakai bahasa sehari-hari.
+Nama user: {username}
+"""
 
     try:
         response = openai.ChatCompletion.create(
             model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": "Kamu adalah teman ngobrol ramah di Discord, siap bantu, bercanda, dan menjawab apa pun dengan sopan."}] + history,
-            max_tokens=300,
-            temperature=0.8
+            messages=[{"role": "system", "content": system_prompt}] + history,
+            temperature=0.85,
+            max_tokens=300
         )
         reply = response.choices[0].message.content.strip()
         history.append({"role": "assistant", "content": reply})
         chat_histories[user_id] = history[-10:]
+        last_messages[user_id] = user_message.lower()
         return reply
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
 @client.event
 async def on_ready():
-    print(f"✅ Bot {client.user} siap ngobrol!")
+    print(f"✅ Bot {client.user} siap ngobrol kayak temen!")
 
 @client.event
 async def on_message(message):
@@ -45,10 +60,11 @@ async def on_message(message):
         return
 
     user_id = message.author.id
+    username = message.author.display_name
     prompt = message.content
 
     await message.channel.typing()
-    response = await get_gpt_response(user_id, prompt)
+    response = await get_gpt_response(user_id, prompt, username)
     await message.reply(response)
 
 client.run(TOKEN)
