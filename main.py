@@ -3,9 +3,8 @@ import os
 import requests
 from dotenv import load_dotenv
 
-# Load .env
+# Load .env (lokal development), aman diabaikan oleh Railway
 load_dotenv()
-print("🔑 API KEY Loaded:", os.getenv("OPENROUTER_API_KEY"))
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
@@ -21,7 +20,7 @@ last_messages = {}
 async def get_response(user_id, user_message, username):
     history = chat_histories.get(user_id, [])
 
-    # Deteksi pesan yang diulang
+    # Deteksi spam pesan sama
     if last_messages.get(user_id) == user_message.lower():
         history.append({"role": "user", "content": "Aku ulangin pesan yang sama terus, coba kasih respon unik."})
     else:
@@ -37,7 +36,7 @@ Kamu adalah bot Discord dengan gaya santai, gaul, dan lucu. Kamu suka jawab deng
     }
 
     body = {
-        "model": "openchat/openchat-3.5",  # gratis dan bagus
+        "model": "openchat/openchat-3.5",
         "messages": [{"role": "system", "content": system_prompt}] + history,
         "temperature": 0.85,
         "max_tokens": 300
@@ -61,7 +60,7 @@ Kamu adalah bot Discord dengan gaya santai, gaul, dan lucu. Kamu suka jawab deng
 
 @client.event
 async def on_ready():
-    print(f"✅ Bot {client.user} sudah online dan siap ngobrol!")
+    print(f"✅ Bot {client.user} sudah online di Railway!")
 
 @client.event
 async def on_message(message):
