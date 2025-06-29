@@ -2,6 +2,8 @@ import discord
 import openai
 import os
 from dotenv import load_dotenv
+from openai import OpenAI
+
 
 load_dotenv()
 
@@ -14,6 +16,7 @@ openai.api_key = OPENAI_API_KEY
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
+client_ai = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
 
 # Simpan riwayat percakapan dan pesan terakhir user
 chat_histories = {}
@@ -36,11 +39,14 @@ Nama user: {username}
 """
 
     try:
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": system_prompt}] + history,
-            temperature=0.85,
-            max_tokens=300
+       response = client_ai.chat.completions.create(
+    model="gpt-3.5-turbo",
+    messages=[
+        {"role": "system", "content": system_prompt},
+        *history
+    ],
+    temperature=0.85,
+    max_tokens=300
         )
         reply = response.choices[0].message.content.strip()
         history.append({"role": "assistant", "content": reply})
