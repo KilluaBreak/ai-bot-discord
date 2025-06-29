@@ -38,23 +38,21 @@ Jawaban kamu ramah, akrab, dan pakai bahasa sehari-hari.
 Nama user: {username}
 """
 
-    try:
-       response = client_ai.chat.completions.create(
-    model="gpt-3.5-turbo",
-    messages=[
-        {"role": "system", "content": system_prompt},
-        *history
-    ],
-    temperature=0.85,
-    max_tokens=300
-        )
+try:
+    response = client_ai.chat.completions.create(
+        model="gpt-3.5-turbo",
+        messages=[{"role": "system", "content": system_prompt}] + history,
+        temperature=0.85,
+        max_tokens=300
+    )
     reply = response.choices[0].message.content.strip()
-        history.append({"role": "assistant", "content": reply})
-        chat_histories[user_id] = history[-10:]
-        last_messages[user_id] = user_message.lower()
-        return reply
-    except Exception as e:
-        return f"⚠️ Error: {str(e)}"
+    history.append({"role": "assistant", "content": reply})
+    chat_histories[user_id] = history[-10:]
+    last_messages[user_id] = user_message.lower()
+    return reply
+
+except Exception as e:
+    return f"⚠️ Error: {str(e)}"
 
 @client.event
 async def on_ready():
