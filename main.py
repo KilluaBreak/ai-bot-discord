@@ -48,7 +48,7 @@ Nama user: {username}
     temperature=0.85,
     max_tokens=300
         )
-        reply = response.choices[0].message.content.strip()
+    reply = response.choices[0].message.content.strip()
         history.append({"role": "assistant", "content": reply})
         chat_histories[user_id] = history[-10:]
         last_messages[user_id] = user_message.lower()
