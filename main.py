@@ -5,6 +5,7 @@ from dotenv import load_dotenv
 
 # Load .env
 load_dotenv()
+print("🔑 API KEY Loaded:", os.getenv("OPENROUTER_API_KEY"))
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
