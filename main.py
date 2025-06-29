@@ -1,62 +1,65 @@
+import requests
 import discord
 import os
 from dotenv import load_dotenv
-from openai import OpenAI
 
-# Load .env file
 load_dotenv()
 
-# API keys
-TOKEN = os.getenv("DISCORD_TOKEN")
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 
-# Setup OpenAI client (versi terbaru)
-client_ai = OpenAI(api_key=OPENAI_API_KEY)
-
-# Setup Discord client
 intents = discord.Intents.default()
 intents.message_content = True
 client = discord.Client(intents=intents)
 
-# Riwayat chat & pesan terakhir per user
 chat_histories = {}
 last_messages = {}
 
-async def get_gpt_response(user_id, user_message, username):
+async def get_response(user_id, user_message, username):
     history = chat_histories.get(user_id, [])
 
-    # Deteksi pesan berulang
     if last_messages.get(user_id) == user_message.lower():
         history.append({"role": "user", "content": "Aku ulangin pesan yang sama terus, coba kasih respon unik."})
     else:
         history.append({"role": "user", "content": user_message})
 
-    system_prompt = f"""
-Kamu adalah chatbot Discord dengan gaya santai dan gaul.
-Gunakan bahasa sehari-hari, hangat, suka becanda, dan sok akrab.
-Anggap user sebagai teman ngobrol. Nama user: {username}
-"""
+    system_prompt = f"Kamu adalah bot Discord yang santai, lucu, dan gaul. Nama user: {username}"
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    body = {
+        "model": "openchat/openchat-3.5",  # gratis, powerful
+        "messages": [
+            {"role": "system", "content": system_prompt},
+            *history
+        ],
+        "temperature": 0.8,
+        "max_tokens": 300
+    }
 
     try:
-        response = client_ai.chat.completions.create(
-            model="gpt-3.5-turbo",
-            messages=[{"role": "system", "content": system_prompt}] + history,
-            temperature=0.85,
-            max_tokens=300
-        )
-        reply = response.choices[0].message.content.strip()
-        history.append({"role": "assistant", "content": reply})
-        chat_histories[user_id] = history[-10:]
-        last_messages[user_id] = user_message.lower()
-        return reply
+        res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
+        data = res.json()
+
+        if 'choices' in data:
+            reply = data['choices'][0]['message']['content'].strip()
+            history.append({"role": "assistant", "content": reply})
+            chat_histories[user_id] = history[-10:]
+            last_messages[user_id] = user_message.lower()
+            return reply
+        else:
+            return f"⚠️ Error: {data.get('error', {}).get('message', 'Gagal menerima respon')}"
 
     except Exception as e:
         return f"⚠️ Error: {str(e)}"
 
 @client.event
 async def on_ready():
-    print(f"✅ Bot {client.user} aktif dan siap ngobrol!")
+    print(f"✅ Bot {client.user} siap pakai OpenRouter!")
 
 @client.event
 async def on_message(message):
@@ -68,7 +71,7 @@ async def on_message(message):
     prompt = message.content
 
     await message.channel.typing()
-    response = await get_gpt_response(user_id, prompt, username)
+    response = await get_response(user_id, prompt, username)
     await message.reply(response)
 
-client.run(TOKEN)
+client.run(DISCORD_TOKEN)
