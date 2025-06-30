@@ -1,78 +1,133 @@
-import discord
 import os
+import logging
+import json
+import asyncio
+from typing import Dict, List
+
+import discord
 import requests
+from discord import app_commands
 from dotenv import load_dotenv
 
-# Load .env (lokal development), aman diabaikan oleh Railway
-load_dotenv()
+# ─────────────────────────────────────────────
+# Environment & Logging
+# ─────────────────────────────────────────────
+load_dotenv()  # Only used in local dev. Railway uses service variables.
 
 DISCORD_TOKEN = os.getenv("DISCORD_TOKEN")
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID"))
+TARGET_CHANNEL_ID = int(os.getenv("TARGET_CHANNEL_ID", 0))
+MODEL_ID = os.getenv("MODEL_ID", "openchat/openchat-3.5")  # Override via Railway if needed
 
+logging.basicConfig(level=logging.INFO, format="[%(asctime)s] [%(levelname)s] %(message)s")
+logger = logging.getLogger("ai-agent-v3")
+
+if not all([DISCORD_TOKEN, OPENROUTER_API_KEY, TARGET_CHANNEL_ID]):
+    logger.error("Environment variables missing. Make sure DISCORD_TOKEN, OPENROUTER_API_KEY, and TARGET_CHANNEL_ID are set.")
+    raise SystemExit(1)
+
+# ─────────────────────────────────────────────
+# Discord Setup
+# ─────────────────────────────────────────────
 intents = discord.Intents.default()
 intents.message_content = True
-client = discord.Client(intents=intents)
 
-chat_histories = {}
-last_messages = {}
+bot = discord.Client(intents=intents)
+cmd_tree = app_commands.CommandTree(bot)
 
-async def get_response(user_id, user_message, username):
+# ─────────────────────────────────────────────
+# In‑memory conversation store
+# ─────────────────────────────────────────────
+UserHistory = Dict[int, List[Dict[str, str]]]
+chat_histories: UserHistory = {}
+last_messages: Dict[int, str] = {}
+
+OPENROUTER_ENDPOINT = "https://openrouter.ai/api/v1/chat/completions"
+HEADERS = {
+    "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+    "Content-Type": "application/json"
+}
+
+def build_system_prompt(username: str) -> str:
+    return (
+        "Kamu adalah AI teman ngobrol di Discord dengan gaya santai, gaul, dan suka bercanda. "
+        f"Panggil pengguna dengan ramah. Nama user: {username}."
+    )
+
+def openrouter_chat(messages: List[Dict[str, str]]) -> str:
+    body = {
+        "model": MODEL_ID,
+        "messages": messages,
+        "temperature": 0.9,
+        "max_tokens": 300,
+    }
+    try:
+        resp = requests.post(OPENROUTER_ENDPOINT, headers=HEADERS, json=body, timeout=30)
+        data = resp.json()
+        if "choices" not in data:
+            raise RuntimeError(data.get("error", {}).get("message", "Unknown API response"))
+        return data["choices"][0]["message"]["content"].strip()
+    except Exception as e:
+        logger.exception("OpenRouter API error: %s", e)
+        return "⚠️ Maaf, aku lagi error. Coba lagi nanti ya!"
+
+async def get_ai_reply(user_id: int, user_message: str, username: str) -> str:
     history = chat_histories.get(user_id, [])
 
-    # Deteksi spam pesan sama
+    # Detect duplicate consecutive message
     if last_messages.get(user_id) == user_message.lower():
         history.append({"role": "user", "content": "Aku ulangin pesan yang sama terus, coba kasih respon unik."})
     else:
         history.append({"role": "user", "content": user_message})
 
-    system_prompt = f"""
-Kamu adalah bot Discord dengan gaya santai, gaul, dan lucu. Kamu suka jawab dengan cara yang asik dan kayak ngobrol sama temen. Nama user: {username}
-"""
+    system_prompt = build_system_prompt(username)
+    messages = [{"role": "system", "content": system_prompt}] + history
 
-    headers = {
-        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-        "Content-Type": "application/json"
-    }
+    reply = openrouter_chat(messages)
 
-    body = {
-        "model": "openchat/openchat-3.5",
-        "messages": [{"role": "system", "content": system_prompt}] + history,
-        "temperature": 0.85,
-        "max_tokens": 300
-    }
+    # Update state
+    history.append({"role": "assistant", "content": reply})
+    chat_histories[user_id] = history[-10:]  # Keep last 10 exchanges
+    last_messages[user_id] = user_message.lower()
 
-    try:
-        res = requests.post("https://openrouter.ai/api/v1/chat/completions", headers=headers, json=body)
-        data = res.json()
+    return reply
 
-        if 'choices' in data:
-            reply = data['choices'][0]['message']['content'].strip()
-            history.append({"role": "assistant", "content": reply})
-            chat_histories[user_id] = history[-10:]
-            last_messages[user_id] = user_message.lower()
-            return reply
-        else:
-            return f"⚠️ Error dari API: {data.get('error', {}).get('message', 'Gagal menerima respon')}"
+# ─────────────────────────────────────────────
+# Slash command to reset user history
+# ─────────────────────────────────────────────
+@cmd_tree.command(name="reset", description="Reset chat history dengan bot untuk user ini")
+async def reset(interaction: discord.Interaction):
+    user_id = interaction.user.id
+    chat_histories.pop(user_id, None)
+    last_messages.pop(user_id, None)
+    await interaction.response.send_message("📛 Riwayat obrolan kamu udah di‑reset!", ephemeral=True)
 
-    except Exception as e:
-        return f"⚠️ Error: {str(e)}"
-
-@client.event
+# ─────────────────────────────────────────────
+# Event handlers
+# ─────────────────────────────────────────────
+@bot.event
 async def on_ready():
-    print(f"✅ Bot {client.user} sudah online di Railway!")
+    await cmd_tree.sync()
+    logger.info("Bot %s online. Listening on channel %s", bot.user, TARGET_CHANNEL_ID)
 
-@client.event
-async def on_message(message):
+@bot.event
+async def on_message(message: discord.Message):
+    # Ignore bot messages & non‑target channel
     if message.author.bot or message.channel.id != TARGET_CHANNEL_ID:
         return
 
     user_id = message.author.id
     username = message.author.display_name
-    prompt = message.content
+    prompt = message.content.strip()
 
-    await message.channel.typing()
-    response = await get_response(user_id, prompt, username)
-    await message.reply(response)
+    async with message.channel.typing():
+        reply = await asyncio.get_event_loop().run_in_executor(
+            None, lambda: asyncio.run(get_ai_reply(user_id, prompt, username))
+        )
+    await message.reply(reply, mention_author=False)
 
-client.run(DISCORD_TOKEN)
+# ─────────────────────────────────────────────
+# Run the bot
+# ─────────────────────────────────────────────
+if __name__ == "__main__":
+    bot.run(DISCORD_TOKEN)
