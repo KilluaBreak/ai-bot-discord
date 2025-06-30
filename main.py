@@ -50,9 +50,11 @@ HEADERS = {
 
 def build_system_prompt(username: str) -> str:
     return (
-        "Kamu adalah AI teman ngobrol di Discord dengan gaya santai, gaul, dan suka bercanda. "
-        f"Panggil pengguna dengan ramah. Nama user: {username}."
+        f"Kamu adalah AI sahabat santai di Discord. "
+        f"Jawab semua pesan dari {username} dengan gaya santai, lucu, kadang pakai emoji, seperti ngobrol sama temen. "
+        "Gunakan emoji sesuai konteks tapi jangan berlebihan."
     )
+
 
 def openrouter_chat(messages: List[Dict[str, str]]) -> str:
     body = {
