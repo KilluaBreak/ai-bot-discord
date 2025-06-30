@@ -56,9 +56,6 @@ def build_system_prompt(username: str) -> str:
         f"Panggil pengguna {username} dengan ramah dan jangan terlalu formal ya!"
     )
 
-    )
-
-
 def openrouter_chat(messages: List[Dict[str, str]]) -> str:
     body = {
         "model": MODEL_ID,
